@@ -170,10 +170,15 @@ var Question = function(questionSchema, data) {
         _value = self.data.value || null;
     }
     if (self.type === 'choose' && self.format === 'multiselect') {
-        if (!$.isArray(_value)) {
-            _value = [_value];
+        if (_value) {
+            if(!$.isArray(_value)) {
+                _value = [_value];
+            }
+            self.value = ko.observableArray(_value);
         }
-        self.value = ko.observableArray(_value);
+        else {
+            self.value = ko.observableArray([]);
+        }
     }
     else if (self.type === 'object') {
         $.each(self.properties, function(prop, field) {
@@ -239,7 +244,7 @@ var Question = function(questionSchema, data) {
                 var ret = true;
                 $.each(self.properties, function(_, subQuestion) {
                     var value = subQuestion.value();
-                    if (!(Boolean(value === true || (value && value.length)))) {
+                    if (subQuestion.required && !(Boolean(value === true || (value && value.length)))) {
                         ret = false;
                         return;
                     }
@@ -247,7 +252,7 @@ var Question = function(questionSchema, data) {
                 return ret;
             } else {
                 var value = self.value();
-                return Boolean(value === true || (value && value.length));
+                return !self.required || Boolean(value === true || (value && value.length));
             }
         },
         deferEvaluation: true
@@ -392,12 +397,17 @@ MetaSchema.prototype.flatQuestions = function() {
     return flat;
 };
 
-MetaSchema.prototype.askConsent = function() {
+MetaSchema.prototype.askConsent = function(mustAgree) {
     var self = this;
 
     var ret = $.Deferred();
 
+    if (typeof mustAgree === 'undefined') {
+        mustAgree = true;
+    }
+
     var viewModel = {
+        mustAgree: mustAgree,
         message: self.consent,
         consent: ko.observable(false),
         submit: function() {
@@ -501,7 +511,10 @@ Draft.prototype.preRegisterPrompts = function(response, confirm) {
     var viewModel = new ViewModel();
     viewModel.canRegister = ko.computed(function() {
         var embargoed = viewModel.showEmbargoDatePicker();
-        return (embargoed && viewModel.pikaday.isValid());
+        if (embargoed) {
+            return viewModel.pikaday.isValid();
+        }
+        return true;
     });
     var validation = [];
     if (self.metaSchema.requiresApproval) {
@@ -882,15 +895,23 @@ RegistrationEditor.prototype.init = function(draft, preview) {
                     $elem.append(
                         $.map(question.properties, function(subQuestion) {
                             subQuestion = self.context(subQuestion);
+                            var value;
                             if (self.extensions[subQuestion.type] ) {
-                                return $('<p>').append(subQuestion.preview());
+                                value = subQuestion.preview();
                             } else {
-                                return $('<p>').append(subQuestion.value());
+                                value = subQuestion.value();
                             }
+                            return $('<p>').append(value);
                         })
                     );
                 } else {
-                    $elem.append(question.value());
+                    var value;
+                    if (self.extensions[question.type] ) {
+                        value = question.preview();
+                    } else {
+                        value = question.value();
+                    }
+                    $elem.append(value);
                 }
             }
         };
@@ -1277,9 +1298,24 @@ RegistrationManager.prototype.init = function() {
         );
     });
 
-    $.when(getSchemas, getDraftRegistrations).done(function() {
+    var ready = $.when(getSchemas, getDraftRegistrations).done(function() {
         self.loading(false);
     });
+
+    var urlParams = $osf.urlParams();
+    if (urlParams.c && urlParams.c === 'prereg') {
+        $osf.block();
+        ready.done(function() {
+            $osf.unblock();
+            var preregSchema = self.schemas().filter(function(schema) {
+                return schema.name === 'Prereg Challenge';
+            })[0];
+            preregSchema.askConsent().then(function() {
+                self.selectedSchema(preregSchema);                
+                $('#newDraftRegistrationForm').submit();
+            }); 
+        });
+    }
 };
 /**
  * Confirm and delete a draft registration
@@ -1305,7 +1341,7 @@ RegistrationManager.prototype.deleteDraft = function(draft) {
 /**
  * Show the draft registration preview pane
  **/
-RegistrationManager.prototype.createDraftModal = function() {
+RegistrationManager.prototype.createDraftModal = function(selected) {
     var self = this;
     if (!self.selectedSchema()){
         self.selectedSchema(self.schemas()[0]);
@@ -1328,7 +1364,7 @@ RegistrationManager.prototype.createDraftModal = function() {
                 callback: function(event) {
                     var selectedSchema = self.selectedSchema();
                     if (selectedSchema.requiresConsent) {
-                        selectedSchema.askConsent().then(function() {
+                        selectedSchema.askConsent(false).then(function() {
                             $('#newDraftRegistrationForm').submit();
                         });
                     }
