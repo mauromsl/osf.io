@@ -150,16 +150,6 @@ var Question = function(questionSchema, data) {
     self.id = questionSchema.qid;
 
     self.data = data || {};
-    if ($.isFunction(self.data.value)) {
-        // For subquestions, this could be an observable
-        _value = self.data.value();
-    } else {
-        _value = self.data.value || null;
-    }
-    self.value = ko.observable(_value);
-    self.setValue = function(val) {
-        self.value(val);
-    };
 
     self.title = questionSchema.title || 'Untitled';
     self.nav = questionSchema.nav || 'Untitled';
@@ -172,6 +162,46 @@ var Question = function(questionSchema, data) {
     self.properties = questionSchema.properties || {};
     self.match = questionSchema.match || '';
 
+    var _value;
+    if ($.isFunction(self.data.value)) {
+        // For subquestions, this could be an observable
+        _value = self.data.value();
+    } else {
+        _value = self.data.value || null;
+    }
+    if (self.type === 'choose' && self.format === 'multiselect') {
+        if (!$.isArray(_value)) {
+            _value = [_value];
+        }
+        self.value = ko.observableArray(_value);
+    }
+    else if (self.type === 'object') {
+        $.each(self.properties, function(prop, field) {
+            field.qid = field.id || prop;
+            self.properties[prop] = new Question(field, self.data.value[prop]);
+        });
+        self.value = ko.computed({
+            read: function() {
+                var value = {};
+                $.each(self.properties, function(name, prop) {
+                    value[name] = {
+                        value: prop.value(),
+                        comments: prop.comments(),
+                        extra: prop.extra
+                    };
+                });
+                return value;
+            },
+            deferred: true
+        });
+    }
+    else {
+        self.value = ko.observable(_value);
+    }
+    self.setValue = function(val) {
+        self.value(val);
+    };
+
     if (self.required) {
         self.value.extend({
             required: true
@@ -181,7 +211,7 @@ var Question = function(questionSchema, data) {
             required: false
         });
     }
-    self.extra = {};
+    self.extra = ko.observable(self.data.extra || {});
 
     self.showExample = ko.observable(false);
     self.showUploader = ko.observable(false);
@@ -207,37 +237,20 @@ var Question = function(questionSchema, data) {
             if (self.type === 'object') {
                 var ret = true;
                 $.each(self.properties, function(_, subQuestion) {
-                    if(subQuestion.type !== 'osf-upload') {
-                        if ((subQuestion.value() || '').trim() === '' ) {
-                            ret = false;
-                            return;
-                        }
-                    }
-                    else {
-                        // TODO
+                    var value = subQuestion.value();
+                    if (!(Boolean(value === true || (value && value.length)))) {
+                        ret = false;
+                        return;
                     }
                 });
                 return ret;
             } else {
-                return (self.value() || '').trim() !== '';
+                var value = self.value();
+                return Boolean(value === true || (value && value.length));
             }
         },
         deferEvaluation: true
     });
-
-    self.init();
-};
-/**
- * Maps 'object' type Questions's properties to sub-Questions
- **/
-Question.prototype.init = function() {
-    var self = this;
-    if (self.type === 'object') {
-        $.each(self.properties, function(prop, field) {
-            field.qid = field.id;
-            self.properties[prop] = new Question(field, self.data[prop]);
-        });
-    }
 };
 /**
  * Creates a new comment from the current value of Question.nextComment and clears nextComment
@@ -282,6 +295,7 @@ var Page = function(schemaPage, schemaData) {
     var self = this;
     self.questions = ko.observableArray([]);
     self.title = schemaPage.title;
+    self.description = schemaPage.description || '';
     self.id = schemaPage.id;
 
     self.active = ko.observable(false);
@@ -303,10 +317,20 @@ var Page = function(schemaPage, schemaData) {
     });
 
     // TODO: track currentQuestion based on browser focus
-    var question = self.questions[0];
-    self.nextComment = question.nextComment.bind(question);
+    self.currentQuestion = self.questions[0];
+
+    /*
+    self.nextComment = ko.computed({
+        read: function(){
+            return question.nextComment();
+        },
+        write: function(value) {
+            question.nextComment(value);
+        }
+    });
     self.allowAddNext = question.allowAddNext.bind(question);
     self.addComment = question.addComment.bind(question);
+    */
 };
 
 /**
@@ -476,7 +500,7 @@ Draft.prototype.preRegisterPrompts = function(response, confirm) {
     var viewModel = new ViewModel();
     viewModel.canRegister = ko.computed(function() {
         var embargoed = viewModel.showEmbargoDatePicker();
-        return (embargoed && viewModel.isEmbargoEndDateValid()) || !embargoed;
+        return (embargoed && viewModel.pikaday.isValid());
     });
     var validation = [];
     if (self.metaSchema.requiresApproval) {
@@ -649,7 +673,7 @@ Draft.prototype.submitForReview = function() {
                     className: 'btn-primary',
                     callback: function() {
                         self.beforeRegister(self.urls.submit.replace('{draft_pk}', self.pk));
-                    }                    
+                    }
                 }
             }
         });
@@ -708,7 +732,7 @@ var RegistrationEditor = function(urls, editorId) {
         currentPage.active(true);
         History.replaceState({page: self.pages().indexOf(currentPage)});
     });
-    
+
     self.onLastPage = ko.pureComputed(function() {
         return self.currentPage() === self.pages()[self.pages().length - 1];
     });
@@ -752,6 +776,22 @@ var RegistrationEditor = function(urls, editorId) {
         });
     });
 
+    self.validationErrors = ko.computed(function() {
+        if (self.onLastPage()) {
+            var errors = [];
+            var questions = self.flatQuestions() || [];
+            if (questions.length && questions.filter(function(question) {
+                return question.required && !question.isComplete();
+            }).length) {
+                return 'Some required questions are unanswered.';
+            }
+            else {
+                return '';
+            }
+        }
+        return '';
+    });
+
     self.canSubmit = ko.computed(function() {
         var canSubmit = true;
         var questions = self.flatQuestions();
@@ -777,7 +817,7 @@ var RegistrationEditor = function(urls, editorId) {
  *
  * @param {Draft} draft
  **/
-RegistrationEditor.prototype.init = function(draft) {
+RegistrationEditor.prototype.init = function(draft, preview) {
     var self = this;
 
     self.draft(draft);
@@ -829,6 +869,31 @@ RegistrationEditor.prototype.init = function(draft) {
     });
 
     self.currentQuestion(self.flatQuestions().shift());
+
+    preview = preview || false;
+    if (preview) {
+        ko.bindingHandlers.previewQuestion = {
+            init: function(elem, valueAccessor) {
+                var question = valueAccessor();
+                var $elem = $(elem);
+
+                if (question.type === 'object') {
+                    $elem.append(
+                        $.map(question.properties, function(subQuestion) {
+                            subQuestion = self.context(subQuestion);
+                            if (self.extensions[subQuestion.type] ) {
+                                return $('<p>').append(subQuestion.preview());
+                            } else {
+                                return $('<p>').append(subQuestion.value());
+                            }
+                        })
+                    );
+                } else {
+                    $elem.append(question.value());
+                }
+            }
+        };
+    }
 };
 /**
  * @returns {Question[]} flat list of the current schema's questions
@@ -1076,21 +1141,11 @@ RegistrationEditor.prototype.save = function() {
     $.each(metaSchema.pages, function(i, page) {
         $.each(page.questions, function(_, question) {
             var qid = question.id;
-            if (question.type === 'object') {
-                var value = {};
-                $.each(question.properties, function(prop, subQuestion) {
-                    value[prop] = {
-                        value: subQuestion.value(),
-                        comments: ko.toJS(subQuestion.comments())
-                    };
-                });
-                data[qid] = value;
-            } else {
-                data[qid] = {
-                    value: question.value(),
-                    comments: ko.toJS(question.comments())
-                };
-            }
+            data[qid] = ko.toJS({
+                value: question.value(),
+                comments: question.comments(),
+                extra: question.extra
+            });
         });
     });
     var request;
@@ -1103,7 +1158,6 @@ RegistrationEditor.prototype.save = function() {
             schema_data: data
         });
     }
-    self.lastSaveRequest = request;
     request.fail(function() {
         $osf.growl('Problem saving draft', 'There was a problem saving this draft. Please try again, and if the problem persists please contact ' + SUPPORT_LINK + '.');
     });
@@ -1114,7 +1168,7 @@ RegistrationEditor.prototype.save = function() {
  */
 RegistrationEditor.prototype.makeContributorsRequest = function() {
     var self = this;
-    var contributorsUrl = window.contextVars.node.urls.api + 'contributors_abbrev/';
+    var contributorsUrl = window.contextVars.node.urls.api + 'get_contributors/';
     return $.getJSON(contributorsUrl);
 };
 /**
@@ -1124,7 +1178,7 @@ RegistrationEditor.prototype.getContributors = function() {
     var self = this;
     return self.makeContributorsRequest()
         .then(function(data) {
-            return $.map(data.contributors, function(c) { return c.user_fullname; });
+            return $.map(data.contributors, function(c) { return c.fullname; });
         }).fail(function() {
             $osf.growl('Could not retrieve contributors.', 'Please refresh the page or ' +
                        'contact <a href="mailto: support@cos.io">support@cos.io</a> if the ' +

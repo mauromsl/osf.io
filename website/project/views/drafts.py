@@ -44,7 +44,7 @@ def validate_embargo_end_date(end_date_string, node):
     :raises: HTTPError if end_date is less than the approval window or greater than the
     max embargo end date
     """
-    end_date = parse_date(end_date_string)
+    end_date = parse_date(end_date_string, ignoretz=True)
     today = datetime.datetime.utcnow()
     if (end_date - today) <= settings.DRAFT_REGISTRATION_APPROVAL_PERIOD:
         raise HTTPError(http.BAD_REQUEST, data={
@@ -91,7 +91,7 @@ def submit_draft_for_review(auth, node, draft, *args, **kwargs):
     if registration_choice == 'embargo':
         # Initiate embargo
         end_date_string = data['embargoEndDate']
-        validate_embargo_end_date(end_date_string)
+        validate_embargo_end_date(end_date_string, node)
         meta['embargo_end_date'] = end_date_string
     meta['registration_choice'] = registration_choice
     approval = DraftRegistrationApproval(
@@ -215,17 +215,17 @@ def new_draft_registration(auth, node, *args, **kwargs):
             }
         )
 
-    schema_version = data.get('schema_version', 1)
+    schema_version = data.get('schema_version', 2)
 
     meta_schema = get_schema_or_fail(
         Q('name', 'eq', schema_name) &
         Q('schema_version', 'eq', int(schema_version))
     )
-    draft = node.create_draft_registration(
+    draft = DraftRegistration.create_from_node(
+        node,
         user=auth.user,
         schema=meta_schema,
-        data={},
-        save=True,
+        data={}
     )
     return redirect(node.web_url_for('edit_draft_registration_page', draft_id=draft._id))
 
@@ -302,8 +302,11 @@ def get_metaschemas(*args, **kwargs):
     if include == 'latest':
         schema_names = meta_schema_collection.distinct('name')
         for name in schema_names:
-            meta_schema_set = MetaSchema.find(Q('name', 'eq', name))
-            meta_schemas = meta_schemas + [s for s in meta_schema_set.sort('-schema_version').limit(1)]
+            meta_schema_set = MetaSchema.find(
+                Q('name', 'eq', name) &
+                Q('schema_version', 'eq', 2)
+            )
+            meta_schemas = meta_schemas + [s for s in meta_schema_set]
     else:
         meta_schemas = MetaSchema.find()
     meta_schemas = [

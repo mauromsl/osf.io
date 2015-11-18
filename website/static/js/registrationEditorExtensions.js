@@ -6,6 +6,7 @@ var bootbox = require('bootbox');
 var FilesWidget = require('js/filesWidget');
 var Fangorn = require('js/fangorn');
 var $osf = require('js/osfHelpers');
+var waterbutler = require('js/waterbutler');
 
 var node = window.contextVars.node;
 
@@ -67,11 +68,11 @@ var osfUploader = function(element, valueAccessor, allBindings, viewModel, bindi
             onselectrow: function(item) {
                 if (item.kind === 'file') {
                     viewModel.value(item.data.path);
-                    viewModel.selectedFileName(item.data.name);
+                    viewModel.selectedFile(item);
                     item.css = 'fangorn-selected';
                 } else {
-                    viewModel.value('');
-                    viewModel.selectedFileName(NO_FILE);
+                    viewModel.value(NO_FILE);
+                    viewModel.selectedFile(null);
                 }
             },
             resolveRows: function(item) {
@@ -79,7 +80,7 @@ var osfUploader = function(element, valueAccessor, allBindings, viewModel, bindi
                 item.css = '';
 
                 limitContents(item);
-                
+
                 if (viewModel.value() !== null) {
                     if (item.data.path === viewModel.value()) {
                         item.css = 'fangorn-selected';
@@ -111,7 +112,8 @@ var osfUploader = function(element, valueAccessor, allBindings, viewModel, bindi
                     if (viewModel.value() !== null) {
                         if (item.data.path === viewModel.value()) {
                             item.css = 'fangorn-selected';
-                            viewModel.selectedFileName(item.data.name);
+                            item.data.nodeId = tree.data.nodeId;
+                            viewModel.selectedFile(item);
                         }
                     }
                     Fangorn.Utils.inheritFromParent(item, tree);
@@ -138,8 +140,25 @@ var Uploader = function(data) {
     var self = this;
     self._orig = data;
 
-    self.selectedFileName = ko.observable('no file selected');
+    self.selectedFile = ko.observable(null);
+    self.selectedFile.subscribe(function(file) {
+        data.extra({
+            selectedFileName: file.data.name,
+            viewUrl: '/project/' + file.data.nodeId + '/files/osfstorage' + file.data.path
+        });
+    });
     self.filePicker = null;
+
+    self.preview = function() {
+        var value = data.value();
+        if (!value || value === 'no file selected') {
+            return 'no file selected';
+        }
+        else {
+            var extra = data.extra();
+            return $('<a target="_blank" href="' + extra.viewUrl + '">' + extra.selectedFileName + '</a>');
+        }
+    };
 
     $.extend(self, data);
 };
@@ -155,6 +174,9 @@ var AuthorImport = function(data, $root) {
         $.each(boxes, function(i, box) {
             this.checked = value;
         });
+    };
+    self.preview = function() {
+        return self.value();
     };
 
     self.authorDialog = function() {

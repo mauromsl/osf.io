@@ -8,8 +8,8 @@
 <div class="text-center m-t-lg">
     <h3>Preregistration Challenge </h3>
     <hr>
-    <p>Preregistration challenge uses the Open Science Framework for it's application.
-        <br>If you have an account login with your credentials below, or create a free account to continue.
+    <p>
+      Please login to the Open Science Framework or create a free account to continue.
     </p>
 </div>
 %endif
@@ -174,7 +174,7 @@
             <div class="form-group">
                 <div class="col-sm-offset-4 col-sm-8">
                     <input type="hidden" id="campaign" value="${campaign or ''}" />
-                    <button type="submit" class="btn pull-right btn-success ">Create Account</button>
+                    <button type="submit" class="btn pull-right btn-success ">Create account</button>
                 </div>
             </div>
         </form>
