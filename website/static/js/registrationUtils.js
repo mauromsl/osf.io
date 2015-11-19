@@ -82,27 +82,20 @@ function Comment(data) {
     });
 
     /**
-     * Returns 'You' if the current user is the commenter, else the commenter's name
-     */
-    self.getAuthor = ko.pureComputed(function() {
-        if (self.user.id === $osf.currentUser().id) {
-            return 'You';
-        } else {
-            return self.user.fullname;
-        }
-    });
-
-    /**
      * Returns true if the current user is the comment creator
      **/
     self.canDelete = ko.pureComputed(function() {
+        return self.user.id === $osf.currentUser().id;
+    });
+
+    self.isOwner = ko.pureComputed(function() {
         return self.user.id === $osf.currentUser().id;
     });
     /**
      * Returns true if the comment is saved and the current user is the comment creator
      **/
     self.canEdit = ko.pureComputed(function() {
-        return !self.isDeleted() && self.saved() && self.user.id === $osf.currentUser().id;
+        return !self.isDeleted() && self.saved() && self.isOwner();
     });
 }
 /** Toggle the comment's save state **/
@@ -208,6 +201,11 @@ var Question = function(questionSchema, data) {
         self.value(val);
     };
 
+    if (self.type === 'object') {
+        $.each(self.properties, function(_, prop) {
+            self.required = self.required || prop.required;
+        });
+    }
     if (self.required) {
         self.value.extend({
             required: true
@@ -324,19 +322,6 @@ var Page = function(schemaPage, schemaData) {
 
     // TODO: track currentQuestion based on browser focus
     self.currentQuestion = self.questions[0];
-
-    /*
-    self.nextComment = ko.computed({
-        read: function(){
-            return question.nextComment();
-        },
-        write: function(value) {
-            question.nextComment(value);
-        }
-    });
-    self.allowAddNext = question.allowAddNext.bind(question);
-    self.addComment = question.addComment.bind(question);
-    */
 };
 
 /**
@@ -377,7 +362,6 @@ var MetaSchema = function(params, schemaData) {
     self.fulfills = params.fulfills || [];
     self.messages = params.messages || {};
 
-    self.consent = params.consent || '';
     self.requiresConsent = params.requires_consent || false;
 
     self.pages = $.map(self.schema.pages, function(page) {
@@ -396,19 +380,23 @@ MetaSchema.prototype.flatQuestions = function() {
     });
     return flat;
 };
-
-MetaSchema.prototype.askConsent = function(mustAgree) {
+/**
+ * @param Boolean pre: consent before beginning or submitting?
+ **/
+MetaSchema.prototype.askConsent = function(pre) {
     var self = this;
 
     var ret = $.Deferred();
 
-    if (typeof mustAgree === 'undefined') {
-        mustAgree = true;
+    if (typeof pre === 'undefined') {
+        pre = false;
     }
 
+    var message = (pre ? self.messages.preConsentHeader : self.messages.postConsentHeader) + self.messages.consentBody;
+
     var viewModel = {
-        mustAgree: mustAgree,
-        message: self.consent,
+        mustAgree: !pre,
+        message: message,
         consent: ko.observable(false),
         submit: function() {
             $osf.unblock();
@@ -486,7 +474,7 @@ var Draft = function(params, metaSchema) {
         var ret = false;
         $.each(self.pages(), function(i, page) {
             $.each(page.comments(), function(idx, comment) {
-                if ( comment.seenBy().indexOf(user) === -1 )
+                if (comment.seenBy().indexOf(user) === -1 )
                     ret = true;
             });
         });
@@ -494,15 +482,17 @@ var Draft = function(params, metaSchema) {
     });
 
     self.completion = ko.computed(function() {
-        var total = 0;
         var complete = 0;
-        $.each(self.metaSchema.flatQuestions(), function(_, question) {
+        var questions = self.metaSchema.flatQuestions()
+                .filter(function(question) {
+                    return question.required;
+                });
+        $.each(questions, function(_, question) {
             if (question.isComplete()) {
                 complete++;
             }
-            total++;
         });
-        return Math.ceil(100 * (complete / total));
+        return Math.ceil(100 * (complete / questions.length));
     });
 };
 Draft.prototype.preRegisterPrompts = function(response, confirm) {
@@ -568,35 +558,7 @@ Draft.prototype.preRegisterErrors = function(response, confirm) {
             }}
     });
 };
-Draft.prototype.askConsent = function() {
-    var self = this;
 
-    var ret = $.Deferred();
-
-    var viewModel = {
-        message: self.metaSchema.consent,
-        consent: ko.observable(false),
-        submit: function() {
-            $osf.unblock();
-            bootbox.hideAll();
-            ret.resolve();
-        },
-        cancel: function() {
-            $osf.unblock();
-            bootbox.hideAll();
-            ret.reject();
-        }
-    };
-
-    bootbox.dialog({
-        size: 'large',
-        message: function() {
-            ko.renderTemplate('preRegistrationConsent', viewModel, {}, this);
-        }
-    });
-
-    return ret.promise();
-};
 Draft.prototype.beforeRegister = function(url) {
     var self = this;
 
@@ -631,15 +593,15 @@ Draft.prototype.registerWithoutReview = function() {
         title: 'Notice',
         message: self.metaSchema.messages.beforeSkipReview,
         buttons: {
-            submit: {
-                label: 'Continue',
-                className: 'btn-primary',
-                callback: self.beforeRegister.bind(self, null)
-            },
             cancel: {
                 label: 'Cancel',
                 className: 'btn-default',
                 callback: bootbox.hideAll
+            },
+            submit: {
+                label: 'Continue',
+                className: 'btn-warning',
+                callback: self.beforeRegister.bind(self, null)
             }
         }
     });
@@ -669,39 +631,16 @@ Draft.prototype.submitForReview = function() {
     var self = this;
 
     var metaSchema = self.metaSchema;
-    var messages = metaSchema.messages;
-    var beforeSubmitForApprovalMessage = messages.beforeSubmitForApproval || '';
-    var afterSubmitForApprovalMessage = messages.afterSubmitForApproval || '';
-
-    var submitForReview = function() {
-        bootbox.dialog({
-            message: beforeSubmitForApprovalMessage,
-            buttons: {
-                cancel: {
-                    label: 'Cancel',
-                    className: 'btn-default',
-                    callback: bootbox.hideAll
-                },
-                ok: {
-                    label: 'Continue',
-                    className: 'btn-primary',
-                    callback: function() {
-                        self.beforeRegister(self.urls.submit.replace('{draft_pk}', self.pk));
-                    }
-                }
-            }
-        });
-    };
 
     if (self.metaSchema.requiresConsent) {
         return self.metaSchema.askConsent()
+            .always(bootbox.hideAll)
             .then(function() {
-                bootbox.hideAll();
-                submitForReview();
-            })
-            .fail(function() {
-                bootbox.hideAll();
+                self.beforeRegister(self.urls.submit.replace('{draft_pk}', self.pk));
             });
+    }
+    else {
+        self.beforeRegister(self.urls.submit.replace('{draft_pk}', self.pk));
     }
 };
 
@@ -716,8 +655,7 @@ Draft.prototype.submitForReview = function() {
  * @property {ko.observable[Question]} currentQuestion
  * @property {Object} extensions: mapping of extenstion names to their view models
  **/
-var RegistrationEditor = function(urls, editorId) {
-
+var RegistrationEditor = function(urls, editorId, preview) {
     var self = this;
 
     self.urls = urls;
@@ -825,13 +763,46 @@ var RegistrationEditor = function(urls, editorId) {
         'osf-upload': editorExtensions.Uploader,
         'osf-author-import': editorExtensions.AuthorImport
     };
+
+    preview = preview || false;
+    if (preview) {
+        ko.bindingHandlers.previewQuestion = {
+            init: function(elem, valueAccessor) {
+                var question = valueAccessor();
+                var $elem = $(elem);
+
+                if (question.type === 'object') {
+                    $elem.append(
+                        $.map(question.properties, function(subQuestion) {
+                            subQuestion = self.context(subQuestion);
+                            var value;
+                            if (self.extensions[subQuestion.type] ) {
+                                value = subQuestion.preview();
+                            } else {
+                                value = subQuestion.value();
+                            }
+                            return $('<p>').append(value);
+                        })
+                    );
+                } else {
+                    var value;
+                    if (self.extensions[question.type] ) {
+                        value = question.preview();
+                    } else {
+                        value = question.value();
+                    }
+                    $elem.append(value);
+                }
+            }
+        };
+    }
 };
 /**
  * Load draft data into the editor
  *
  * @param {Draft} draft
  **/
-RegistrationEditor.prototype.init = function(draft, preview) {
+RegistrationEditor.prototype.init = function(draft) {
     var self = this;
 
     self.draft(draft);
@@ -883,39 +854,6 @@ RegistrationEditor.prototype.init = function(draft, preview) {
     });
 
     self.currentQuestion(self.flatQuestions().shift());
-
-    preview = preview || false;
-    if (preview) {
-        ko.bindingHandlers.previewQuestion = {
-            init: function(elem, valueAccessor) {
-                var question = valueAccessor();
-                var $elem = $(elem);
-
-                if (question.type === 'object') {
-                    $elem.append(
-                        $.map(question.properties, function(subQuestion) {
-                            subQuestion = self.context(subQuestion);
-                            var value;
-                            if (self.extensions[subQuestion.type] ) {
-                                value = subQuestion.preview();
-                            } else {
-                                value = subQuestion.value();
-                            }
-                            return $('<p>').append(value);
-                        })
-                    );
-                } else {
-                    var value;
-                    if (self.extensions[question.type] ) {
-                        value = question.preview();
-                    } else {
-                        value = question.value();
-                    }
-                    $elem.append(value);
-                }
-            }
-        };
-    }
 };
 /**
  * @returns {Question[]} flat list of the current schema's questions
@@ -1264,6 +1202,11 @@ var RegistrationManager = function(node, draftsSelector, urls, createButton) {
     });
 
     self.loading = ko.observable(true);
+    self.loading.subscribe(function(loading) {
+        if (!loading) {
+            createButton.removeClass('disabled');
+        }
+    });
 
     self.preview = ko.observable(false);
 
@@ -1272,6 +1215,7 @@ var RegistrationManager = function(node, draftsSelector, urls, createButton) {
     self.getSchemas = $.getJSON.bind(null, self.urls.schemas);
 
     if (createButton) {
+        createButton.addClass('disabled');
         createButton.on('click', self.createDraftModal.bind(self));
     }
 };
@@ -1311,9 +1255,9 @@ RegistrationManager.prototype.init = function() {
                 return schema.name === 'Prereg Challenge';
             })[0];
             preregSchema.askConsent().then(function() {
-                self.selectedSchema(preregSchema);                
+                self.selectedSchema(preregSchema);
                 $('#newDraftRegistrationForm').submit();
-            }); 
+            });
         });
     }
 };
@@ -1364,7 +1308,7 @@ RegistrationManager.prototype.createDraftModal = function(selected) {
                 callback: function(event) {
                     var selectedSchema = self.selectedSchema();
                     if (selectedSchema.requiresConsent) {
-                        selectedSchema.askConsent(false).then(function() {
+                        selectedSchema.askConsent(true).then(function() {
                             $('#newDraftRegistrationForm').submit();
                         });
                     }
@@ -1377,24 +1321,11 @@ RegistrationManager.prototype.createDraftModal = function(selected) {
     });
 };
 /**
- * Redirect to the draft register page
+ * Redirect to the draft edit page
  **/
-RegistrationManager.prototype.maybeWarn = function(draft) {
-    var redirect = function() {
-        window.location.assign(draft.urls.edit);
-    };
-    var callback = function(confirmed) {
-        if (confirmed) {
-            redirect();
-        }
-    };
-    if (draft.isApproved) {
-        bootbox.confirm(language.beforeEditIsApproved, callback);
-    }
-    else if (draft.isPendingApproval) {
-        bootbox.confirm(language.beforeEditIsPendingReview, callback);
-    }
-    redirect();
+RegistrationManager.prototype.editDraft = function(draft) {
+    $osf.block();
+    window.location.assign(draft.urls.edit);
 };
 
 module.exports = {
