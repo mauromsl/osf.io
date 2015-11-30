@@ -15,7 +15,8 @@ var language = osfLanguage.registrations;
 
 var SaveManager = require('js/saveManager');
 var editorExtensions = require('js/registrationEditorExtensions');
-var registrationEmbargo = require('js/registrationEmbargo');
+var RegistrationModal = require('js/registrationModal');
+
 // This value should match website.settings.DRAFT_REGISTRATION_APPROVAL_PERIOD
 var DRAFT_REGISTRATION_MIN_EMBARGO_DAYS = 10;
 var DRAFT_REGISTRATION_MIN_EMBARGO_TIMESTAMP = new Date().getTime() + (
@@ -104,9 +105,12 @@ function Comment(data) {
 Comment.prototype.toggleSaved = function(save) {
     var self = this;
 
-    self.saved(!self.saved());
-    if (self.saved()) {
-        save();
+    if (!self.saved()) {
+        // error handling handled implicitly in save
+        save.done(self.saved.bind(self, true));
+    }
+    else {
+        self.saved(false);
     }
 };
 /** Indicate that a comment is deleted **/
@@ -159,19 +163,29 @@ var Question = function(questionSchema, data) {
     self.properties = questionSchema.properties || {};
     self.match = questionSchema.match || '';
 
-    var _value;
-    if ($.isFunction(self.data.value)) {
-        // For subquestions, this could be an observable
-        _value = self.data.value();
+    self.extra = ko.observable(self.data.extra || {});
+    self.showExample = ko.observable(false);
+
+    self.comments = ko.observableArray(
+        $.map(self.data.comments || [], function(comment) {
+            return new Comment(comment);
+        })
+    );
+    self.nextComment = ko.observable('');
+
+    var value;
+    if (ko.isObservable(self.data.value)) {
+        value = self.data.value();
     } else {
-        _value = self.data.value || null;
+        value = self.data.value || null;
     }
+
     if (self.type === 'choose' && self.format === 'multiselect') {
-        if (_value) {
-            if(!$.isArray(_value)) {
-                _value = [_value];
+        if (value) {
+            if(!$.isArray(value)) {
+                value = [value];
             }
-            self.value = ko.observableArray(_value);
+            self.value = ko.observableArray(value);
         }
         else {
             self.value = ko.observableArray([]);
@@ -185,31 +199,34 @@ var Question = function(questionSchema, data) {
         });
         self.value = ko.computed({
             read: function() {
-                var value = {};
-                $.each(self.properties, function(name, prop) {
-                    value[name] = {
-                        value: prop.value(),
-                        comments: prop.comments(),
-                        extra: prop.extra
-                    };
-                });
-                return value;
+                var compositeValue = {};
+                $.each(
+                    $.map(self.properties, function(prop, name) {
+                        var ret = {};
+                        ret[name] = {
+                            value: prop.value(),
+                            comments: prop.comments(),
+                            extra: prop.extra
+                        };
+                        return ret;
+                    }),
+                    $.extend.bind(null, compositeValue)
+                );
+                return compositeValue;
             },
             deferred: true
         });
+
+        self.required = self.required || $osf.any(
+            $.map(self.properties, function(prop) {
+                return prop.required;
+            })
+        );
     }
     else {
-        self.value = ko.observable(_value);
+        self.value = ko.observable(value);
     }
-    self.setValue = function(val) {
-        self.value(val);
-    };
 
-    if (self.type === 'object') {
-        $.each(self.properties, function(_, prop) {
-            self.required = self.required || prop.required;
-        });
-    }
     if (self.required) {
         self.value.extend({
             required: true
@@ -219,17 +236,7 @@ var Question = function(questionSchema, data) {
             required: false
         });
     }
-    self.extra = ko.observable(self.data.extra || {});
 
-    self.showExample = ko.observable(false);
-    self.showUploader = ko.observable(false);
-
-    self.comments = ko.observableArray(
-        $.map(self.data.comments || [], function(comment) {
-            return new Comment(comment);
-        })
-    );
-    self.nextComment = ko.observable('');
     /**
      * @returns {Boolean} true if the nextComment <input> is not blank
      **/
@@ -283,29 +290,25 @@ Question.prototype.addComment = function(save) {
 Question.prototype.toggleExample = function() {
     this.showExample(!this.showExample());
 };
-/**
- * Shows/hides the Question uploader
- **/
-Question.prototype.toggleUploader = function() {
-    this.showUploader(!this.showUploader());
-};
 
 /**
  * @class Page
  * A single page within a draft registration
  *
- * @param {Object} data: serialized page from a registration schema
+ * @param {Object} schemaPage: page representation from a registration schema (see MetaSchema#pages)
+ * @param {Object} schemaData: user data to autoload into page, a key/value map of questionId: questionData
  *
  * @property {ko.observableArray[Question]} questions
  * @property {String} title
  * @property {String} id
+ * @property {Question[]} questions
+ * @property {Question} current Question
  **/
 var Page = function(schemaPage, schemaData) {
     var self = this;
-    self.questions = ko.observableArray([]);
+    self.id = schemaPage.id;
     self.title = schemaPage.title;
     self.description = schemaPage.description || '';
-    self.id = schemaPage.id;
 
     self.active = ko.observable(false);
 
@@ -314,6 +317,9 @@ var Page = function(schemaPage, schemaData) {
         return new Question(questionSchema, schemaData[questionSchema.qid]);
     });
 
+    /**
+     * Aggregate lists of comments from each question in questions. Sort by 'created'.
+     **/
     self.comments = ko.computed(function() {
         var comments = [];
         $.each(self.questions, function(_, question) {
@@ -518,49 +524,21 @@ Draft.prototype.getUnseenComments = function() {
 };
 Draft.prototype.preRegisterPrompts = function(response, confirm) {
     var self = this;
-    var ViewModel = registrationEmbargo.ViewModel;
-    var viewModel = new ViewModel();
-    viewModel.canRegister = ko.computed(function() {
-        var embargoed = viewModel.showEmbargoDatePicker();
-        if (embargoed) {
-            return viewModel.pikaday.isValid();
-        }
-        return true;
-    });
-    var validation = [];
+    var validator = null;
     if (self.metaSchema.requiresApproval) {
-        validation.push({
+        validator = {
             validator: function() {
                 return viewModel.embargoEndDate().getTime() > DRAFT_REGISTRATION_MIN_EMBARGO_TIMESTAMP;
             },
             message: 'Embargo end date must be at least ' + DRAFT_REGISTRATION_MIN_EMBARGO_DAYS + ' days in the future.'
-        });
+        };
     }
-    validation.push({
-        validator: function() {return viewModel.isEmbargoEndDateValid();},
-        message: 'Embargo end date must be at least two days in the future.'
-    });
-    viewModel.pikaday.extend({
-        validation: validation
-    });
-    viewModel.close = function() {
-        bootbox.hideAll();
-    };
-    viewModel.register = function() {
-        confirm({
-            registrationChoice: viewModel.registrationChoice(),
-            embargoEndDate: viewModel.embargoEndDate()
-        });
-    };
-    viewModel.preRegisterPrompts = response.prompts || [];
-    bootbox.dialog({
-        // TODO: Check button language here
-        size: 'large',
-        title: language.registerConfirm,
-        message: function() {
-            ko.renderTemplate('preRegistrationTemplate', viewModel, {}, this);
-        }
-    });
+    var preRegisterPrompts = response.prompts || [];
+
+    var registrationModal = new RegistrationModal.ViewModel(
+        confirm, preRegisterPrompts, validator
+    );
+    registrationModal.show();
 };
 Draft.prototype.preRegisterErrors = function(response, confirm) {
     bootbox.confirm({
@@ -671,6 +649,7 @@ Draft.prototype.submitForReview = function() {
  * @param {Object} urls
  * @param {String} urls.update: endpoint to update a draft instance
  * @param {String} editorId: id of editor DOM node
+ * @param {Boolean} preview: enable preview mode-- adds a KO binding handler to allow extensions to define custom preview behavior
  * @property {ko.observable[Boolean]} readonly
  * @property {ko.observable[Draft]} draft
  * @property {ko.observable[Question]} currentQuestion
@@ -800,7 +779,7 @@ var RegistrationEditor = function(urls, editorId, preview) {
                             } else {
                                 value = subQuestion.value();
                             }
-                            return $('<p>').append(value);
+                            return $('<p>').append($osf.htmlEscape(value));
                         })
                     );
                 } else {
@@ -810,7 +789,7 @@ var RegistrationEditor = function(urls, editorId, preview) {
                     } else {
                         value = question.value();
                     }
-                    $elem.append(value);
+                    $elem.append($osf.htmlEscape(value));
                 }
             }
         };
@@ -1135,9 +1114,7 @@ RegistrationEditor.prototype.getContributors = function() {
         .then(function(data) {
             return $.map(data.contributors, function(c) { return c.fullname; });
         }).fail(function() {
-            $osf.growl('Could not retrieve contributors.', 'Please refresh the page or ' +
-                       'contact <a href="mailto: support@cos.io">support@cos.io</a> if the ' +
-                       'problem persists.');
+            $osf.growl('Could not retrieve contributors.', osfLanguage.REFRESH_OR_SUPPORT);
         });
 };
 
@@ -1242,7 +1219,7 @@ RegistrationManager.prototype.init = function() {
     });
 
     var urlParams = $osf.urlParams();
-    if (urlParams.c && urlParams.c === 'prereg') {
+    if (urlParams.campaign && urlParams.campaign === 'prereg') {
         $osf.block();
         ready.done(function() {
             $osf.unblock();
@@ -1321,6 +1298,10 @@ RegistrationManager.prototype.createDraftModal = function(selected) {
 RegistrationManager.prototype.editDraft = function(draft) {
     $osf.block();
     window.location.assign(draft.urls.edit);
+};
+RegistrationManager.prototype.previewDraft = function(draft) {
+    $osf.block();
+    window.location.assign(draft.urls.register_page);
 };
 
 module.exports = {

@@ -34,6 +34,10 @@ var limitContents = function(item) {
 var filePicker;
 var osfUploader = function(element, valueAccessor, allBindings, viewModel, bindingContext) {
     viewModel.showUploader(true);
+    viewModel.toggleUploader = function() {
+        this.showUploader(!this.showUploader());
+    };
+
 
     var $root = bindingContext.$root;
     $root.currentPage.subscribe(function(question) {
@@ -52,6 +56,17 @@ var osfUploader = function(element, valueAccessor, allBindings, viewModel, bindi
         }
     }, null, 'beforeChange');
 
+
+    var onSelectRow = function(item) {
+        if (item.kind === 'file') {
+            viewModel.value(item.data.path);
+            viewModel.selectedFile(item);
+            item.css = 'fangorn-selected';
+        } else {
+            viewModel.value(NO_FILE);
+            viewModel.selectedFile(null);
+        }
+    };
     var fw = new FilesWidget(
         element.id,
         node.urls.api + 'files/grid/', {
@@ -65,23 +80,18 @@ var osfUploader = function(element, valueAccessor, allBindings, viewModel, bindi
                 parallelUploads: 1,
                 acceptDirectories: false
             },
-            onselectrow: function(item) {
-                if (item.kind === 'file') {
-                    viewModel.value(item.data.path);
-                    viewModel.selectedFile(item);
-                    item.css = 'fangorn-selected';
-                } else {
-                    viewModel.value(NO_FILE);
-                    viewModel.selectedFile(null);
-                }
+            oncreate: function(item) {
+                onSelectRow(item);
             },
+            onselectrow: onSelectRow,
             resolveRows: function(item) {
                 var tb = this;
+
                 item.css = '';
 
                 limitContents(item);
 
-                if (viewModel.value() !== null) {
+                if (viewModel.value()) {
                     if (item.data.path === viewModel.value()) {
                         item.css = 'fangorn-selected';
                     }
@@ -104,7 +114,9 @@ var osfUploader = function(element, valueAccessor, allBindings, viewModel, bindi
                 return configOption || defaultColumns;
             },
             lazyLoadOnLoad: function(tree, event) {
-                limitContents(tree);
+                if (tree.data.nodeId === window.contextVars.node.id) {
+                    this.multiselected([tree]);
+                }
 
                 tree.children.forEach(function(item) {
                     limitContents(item);
@@ -136,46 +148,46 @@ ko.bindingHandlers.osfUploader = {
     init: osfUploader
 };
 
-var Uploader = function(data) {
+var Uploader = function(question) {
 
     var self = this;
-    self._orig = data;
 
+    question.showUploader = ko.observable(false);
     self.selectedFile = ko.observable(null);
     self.selectedFile.subscribe(function(file) {
         if (file) {
-            data.extra({
+            question.extra({
                 selectedFileName: file.data.name,
                 viewUrl: '/project/' + file.data.nodeId + '/files/osfstorage' + file.data.path,
                 hasSelectedFile: true
             });
         }
         else {
-            data.extra({
+            question.extra({
                 selectedFileName: 'no file selected'
             });
-            data.value('no file selected');
+            question.value('no file selected');
         }
     });
     self.hasSelectedFile = ko.computed(function() {
-        return !!(data.extra().viewUrl);
+        return !!(question.extra().viewUrl);
     });
     self.unselectFile = self.selectedFile.bind(null, null);
 
     self.filePicker = null;
 
     self.preview = function() {
-        var value = data.value();
+        var value = question.value();
         if (!value || value === 'no file selected') {
             return 'no file selected';
         }
         else {
-            var extra = data.extra();
-            return $('<a target="_blank" href="' + extra.viewUrl + '">' + extra.selectedFileName + '</a>');
+            var extra = question.extra();
+            return $('<a target="_blank" href="' + extra.viewUrl + '">' + $osf.htmlEscape(extra.selectedFileName) + '</a>');
         }
     };
 
-    $.extend(self, data);
+    $.extend(self, question);
 };
 
 var AuthorImport = function(data, $root) {

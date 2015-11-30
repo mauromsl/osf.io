@@ -6,12 +6,12 @@
  * objects other than nodes.
 **/
 'use strict';
+require('css/autocomplete.css');
+
 var $ = require('jquery');
 var ko = require('knockout');
 var $osf = require('js/osfHelpers');
 require('typeahead.js');
-
-var MAX_RESULTS = 14;
 
 var MethodNotDefined = function(methodName) {
     this.name = 'MethodNotDefined';
@@ -29,7 +29,7 @@ MethodNotDefined.prototype = Error.prototype;
  *  inputElement: the element upon which to call .typeahead(). Injected during
  *      component registration.
  */
-var baseSearchViewModel = function (params) {
+var BaseSearchViewModel = function (params) {
     // Parse params
     this.dataUrl = params.data;
     this.inputElement = params.inputElement;
@@ -49,7 +49,7 @@ var baseSearchViewModel = function (params) {
         this.initTypeahead.bind(this)
     );
 };
-$.extend(baseSearchViewModel.prototype, {
+$.extend(BaseSearchViewModel.prototype, {
     /************************************************
      * Abstract methods - subclasses must implement *
      ************************************************/
@@ -114,10 +114,10 @@ $.extend(baseSearchViewModel.prototype, {
 });
 
 
-var draftRegistrationsSearchViewModel = function (params) {
-    baseSearchViewModel.apply(this, arguments);
+var DraftRegistrationsSearchViewModel = function (params) {
+    BaseSearchViewModel.apply(this, arguments);
 };
-$.extend(draftRegistrationsSearchViewModel.prototype, baseSearchViewModel.prototype, {
+$.extend(DraftRegistrationsSearchViewModel.prototype, BaseSearchViewModel.prototype, {
     processData: function (data) {
         this.items(data.draftRegistrations);
     },
@@ -128,10 +128,33 @@ $.extend(draftRegistrationsSearchViewModel.prototype, baseSearchViewModel.protot
     suggestionTemplate: function(item) {
         var dateUpdated = new $osf.FormattableDate(item.value.dateUpdated);
         var dateCreated = new $osf.FormattableDate(item.value.dateCreated);
-        return '<p>' + item.value.node.title + '</p>' +
-            '<p><small class="m-l-md text-muted">' + 'Initiated by: ' + item.value.initiator.name + '</small></p>' +
-            '<p><small class="m-l-md text-muted">' + 'Initiated: ' + dateCreated.local + '</small></p>' +
-            '<p><small class="m-l-md text-muted">' + 'Last updated: ' + dateUpdated.local + '</small></p>';
+        // jQuery implicity escapes HTML
+        return $('<div>').append(
+            $('<p>', {
+                text: item.value.node.title
+            }).append(
+                [
+                    $('<p>').append(
+                        $('<small>', {
+                            className: 'm-l-md text-muted',
+                            text: 'Initiated by: ' + item.value.initiator.name
+                        })
+                    ),
+                    $('<p>').append(
+                        $('<small>', {
+                            className: 'm-l-md text-muted',
+                            text: 'Initiated: ' + dateCreated.local
+                        })
+                    ),
+                    $('<p>').append(
+                        $('<small>', {
+                            className: 'm-l-md text-muted',
+                            text: 'Last updated: ' + dateUpdated.local
+                        })
+                    )                    
+                ]
+            )                
+        ).html();
     },
     substringMatcher: function(strs) {
         return function findMatches(q, cb) {
@@ -143,11 +166,6 @@ $.extend(draftRegistrationsSearchViewModel.prototype, baseSearchViewModel.protot
                 if (substrRegex.test(str.node.title)) {
                     count += 1;
                     matches.push({ value: str });
-
-                    //alex's hack to limit number of results
-                    if(count > MAX_RESULTS){
-                        return false;
-                    }
                 }
             });
 
@@ -164,7 +182,7 @@ ko.components.register('osf-draft-registrations-search', {
             $.extend(params, {
                 inputElement: $(componentInfo.element).find('input.osf-typeahead')
             });
-            return new draftRegistrationsSearchViewModel(params);
+            return new DraftRegistrationsSearchViewModel(params);
         }
     },
     template: {element: 'osf-search'}

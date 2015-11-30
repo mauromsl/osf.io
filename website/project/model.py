@@ -3190,7 +3190,7 @@ class Node(GuidStoredObject, AddonModelMixin, IdentifierMixin):
             auth=Auth(user),
             save=True,
         )
-        # TODO make private?
+
 
 @Node.subscribe('before_save')
 def validate_permissions(schema, instance):
@@ -3302,14 +3302,9 @@ class Sanction(StoredObject):
     state = fields.StringField(
         default=UNAPPROVED,
         validate=validators.choice_in((
-            # Allowed values according to source code comment
-            'unapproved',
-            'approved',
-            'rejected',
-            # Possible values, origin unclear. May be required, incl for unit tests TODO: review later
-            'active',
-            'cancelled',
-            'completed',
+            UNAPPROVED,
+            APPROVED,
+            REJECTED
         ))
     )
 
@@ -3998,7 +3993,7 @@ class DraftRegistrationApproval(Sanction):
             save=True
         )
         registration_choice = self.meta['registration_choice']
-        sanction = None
+
         if registration_choice == 'immediate':
             sanction = functools.partial(registration.require_approval, draft.initiator)
         elif registration_choice == 'embargo':
@@ -4009,16 +4004,7 @@ class DraftRegistrationApproval(Sanction):
             )
         else:
             raise ValueError("'registration_choice' must be either 'embargo' or 'immediate'")
-        try:
-            sanction(notify_initiator_on_complete=True)
-        except NodeStateError as e:
-            raise e
-            # TODO(samchrisinger)
-            #  raise HTTPError(http.BAD_REQUEST, data=dict(message_long=err.message))
-        except ValidationValueError as e:
-            raise e
-            # TODO(samchrisinger):
-            # raise HTTPError(http.BAD_REQUEST, data=dict(message_long=err.message))
+        sanction(notify_initiator_on_complete=True)
 
     def _on_reject(self, user, *args, **kwargs):
         # clear out previous registration options
