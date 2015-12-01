@@ -777,9 +777,9 @@ var RegistrationEditor = function(urls, editorId, preview) {
                             if (self.extensions[subQuestion.type] ) {
                                 value = subQuestion.preview();
                             } else {
-                                value = subQuestion.value();
+                                value = $osf.htmlEscape(subQuestion.value() || '');
                             }
-                            return $('<p>').append($osf.htmlEscape(value));
+                            return $('<p>').append(value);
                         })
                     );
                 } else {
@@ -787,9 +787,9 @@ var RegistrationEditor = function(urls, editorId, preview) {
                     if (self.extensions[question.type] ) {
                         value = question.preview();
                     } else {
-                        value = question.value();
+                        value = $osf.htmlEscape(question.value() || '');
                     }
-                    $elem.append($osf.htmlEscape(value));
+                    $elem.append(value);
                 }
             }
         };
@@ -1207,11 +1207,13 @@ RegistrationManager.prototype.init = function() {
 
     var getDraftRegistrations = self.getDraftRegistrations();
     getDraftRegistrations.done(function(response) {
-        self.drafts(
-            $.map(response.drafts, function(draft) {
-                return new Draft(draft);
-            })
-        );
+        var drafts = $.map(response.drafts, function(draft) {
+            return new Draft(draft);
+        });
+        drafts.sort(function(a, b) {
+            return a.initiated > b.initiated;
+        });
+        self.drafts(drafts);
     });
 
     var ready = $.when(getSchemas, getDraftRegistrations).done(function() {
