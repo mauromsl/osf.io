@@ -200,6 +200,7 @@ ADDON_CATEGORIES = [
     'other',
     'security',
     'citations',
+    'publish',
 ]
 
 SYSTEM_ADDED_ADDONS = {

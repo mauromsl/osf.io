@@ -12,7 +12,8 @@
         "s3",
         "twofactor",
         "wiki",
-        "googledrive"
+        "googledrive",
+        "ubiquitypress"
     ],
     "addons_archivable": {
         "osfstorage": "full",
