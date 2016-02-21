@@ -1,5 +1,4 @@
-from . import model
-from . import routes
+from website.addons.ubiquitypress import model, routes
 
 import os
 

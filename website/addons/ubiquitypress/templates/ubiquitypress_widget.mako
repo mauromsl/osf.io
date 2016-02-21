@@ -4,20 +4,18 @@
 
     <div id="forwardWidget" data-bind="visible: url() !== null">
 
-        <div>
-            This project contains a forward to
-            <a data-bind="attr.href: url" target="_blank">{{ linkDisplay }}</a>.
-        </div>
+        hello!
+        
+		{{ test }}
 
-        <div class="spaced-buttons m-t-sm">
-            <a class="btn btn-primary" data-bind="click: doRedirect">Redirect</a>
-        </div>
+		testing how this works
+
 
     </div>
+    sdofyusdliufghsdkfjhgsdkfhsgdfjh
+    ubiquitypress!!!!!!!!!!
 
 </div>
+asdusgf iuysfvgsjdkHGFbd
+ ubiquitypress!!!!!!!!!!
 
-
-{{ test }}
-
-testing how this works

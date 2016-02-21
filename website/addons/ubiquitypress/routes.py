@@ -13,19 +13,10 @@ api_routes = {
                 '/project/<pid>/node/<nid>/ubiquitypress/config/'
             ],
             'get',
-            views.up_settings,
+            views.ubiquitypress_settings,
             json_renderer,
         ),
 
-        Rule(
-            [
-                '/project/<pid>/ubiquitypress/config/',
-                '/project/<pid>/node/<nid>/ubiquitypress/config/'
-            ],
-            'put',
-            views.up_get_journals,
-            json_renderer,
-        ),
         Rule(
             [
                 '/project/<pid>/ubiquitypress/widget/',
@@ -37,5 +28,8 @@ api_routes = {
         )
 
     ],
+
+
+    'prefix': '/api/v1',
 
 }

@@ -2,4 +2,5 @@
 
 
 JOURNALS_API = 'http://jura.ubiquity.press/api/public/journals/' #add stage parameter?
+OSF_PATH = '/osf/'
 

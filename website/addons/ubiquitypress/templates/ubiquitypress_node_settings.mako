@@ -1,4 +1,4 @@
-<div id="ubiquitypressScope" class="scripted">
+<div id="ubiquitypressScope" class="scripted" style="display: block">
 
     <h4 class="addon-title">
         <img class="addon-icon" src="/static/addons/ubiquitypress/comicon.png">
@@ -11,15 +11,15 @@
         <form class="form" data-bind="submit: submitSettings">
             <div>
                 <div class="form-group">
-                    <label for="forwardUrl">Select a journal</label>
+                    <label for="ubiquitypressJournalCode">Select a journal</label>
                     <select
-                            id="ubiquitypressJournalCode"
+                            id="upJournalCode"
                             class="form-control"
-                            data-bind="value: url"
-                            placeholder="Required"
+                            data-bind="options: upJournals,
+                                optionsText: 'name',
+                                optionsValue: 'code'"
+                            placeholder="required"
                             required>
-
-                        <option value="cg"> The Comics Grid</option>
                     </select>
                 </div>
             </div>

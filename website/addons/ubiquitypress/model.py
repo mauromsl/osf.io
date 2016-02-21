@@ -1,24 +1,20 @@
-from website.addons.base import AddonOAuthNodeSettingsBase
-from website.addons.base import AddonOAuthUserSettingsBase
-from website.addons.citations.utils import serialize_folder
-from website.addons.ubiquitypress import serializer
-from website.addons.ubiquitypress import settings
-from website.oauth.models import ExternalProvider
-from website.util import web_url_for
 from website.addons.base import AddonNodeSettingsBase
+from modularodm import fields
 
 class UbiquitypressNodeSettings(AddonNodeSettingsBase):
 
-    complete = True
+    journal_code = fields.StringField()
 
-    journal = None
-    
-    @property
-    def link_text(self):
-        return self.label if self.label else self.url
 
     def on_delete(self):
         self.reset()
 
     def reset(self):
-        self.url = None
+        self.journal_code = None
+
+    def api_endpoint(self):
+    	return utils.get_journal_url(self.journal_code)
+
+
+
+
