@@ -13,11 +13,11 @@
                 <div class="form-group">
                     <label for="ubiquitypressJournalCode">Select a journal</label>
                     <select
-                            id="upJournalCode"
+                            id="ubiquitypressJournalCode"
                             class="form-control"
                             data-bind="options: upJournals,
                                 optionsText: 'name',
-                                optionsValue: 'code'"
+                                value: selectedJournal,"
                             placeholder="required"
                             required>
                     </select>
@@ -25,10 +25,10 @@
             </div>
 
     <div class="col-md-4">
-    { journal_cover }
+        <img data-bind="attr:{src: coverImagePath}">
     </div>
     <div class="col-md-8">{journal_description}</div>
-
+        <span data-bind:"text: journalDescription"></span>
     </div>
 
 </div>

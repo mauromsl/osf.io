@@ -9,21 +9,40 @@ var $osf = require('js/osfHelpers');
 
 ko.punches.enableAll();
 
+ko.extebders
+
 
 /**
  * Knockout view model for the Ubiquitypress node settings widget.
  */
 var ViewModel = function(url) {
+
 	var self = this;
-	self.upJournals = ko.observableArray([]);
+	self.upJournals = ko.observableArray([{code:'',full_cover_image_path: null, name: ''}]);
+	self.selectedJournal = ko.observable();
+
+	self.selectedJournalCode = ko.computed(function() {
+		return self.selectedJournal().code
+	}, self, {deferEvaluation: true});
+
+	self.coverImagePath = ko.computed(function(){
+		return self.selectedJournal().full_cover_image_path; 
+	}, self, {deferEvaluation: true});
+
+	self.journalDescription = ko.computed(function(){
+		return self.selectedJournal().short_description; 
+	}, self, {deferEvaluation: true});
+
+
 	/**
      * Update the view model from data returned from the server.
      */
     self.updateFromData = function(data) {
-        self.journalCode = data.journal_code;
+    	if (data.journal_code) {
+        	self.selectedJournal(data.journal_code);
+       	}
     	self.upJournals(data.journals);
     };
-
 	self.fetchFromServer = function() {
         $.ajax({
             type: 'GET',
@@ -33,10 +52,16 @@ var ViewModel = function(url) {
             self.updateFromData(response);
         });
     };
-    self.fetchFromServer();
-    console.log(self.upJournals);
+        self.fetchFromServer();
+
+    /**
+    *Generate cover url
+    */
+
 
 };
+
+
 
 function UbiquitypressConfig(selector, url) {
     var self = this;
@@ -45,3 +70,4 @@ function UbiquitypressConfig(selector, url) {
 }
 
 module.exports = UbiquitypressConfig;
+
