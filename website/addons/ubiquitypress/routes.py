@@ -19,6 +19,16 @@ api_routes = {
 
         Rule(
             [
+                '/project/<pid>/ubiquitypress/config/',
+                '/project/<pid>/node/<nid>/ubiquitypress/config/'
+            ],
+            'put',
+            views.ubiquitypress_settings_put,
+            json_renderer,
+        ),
+
+        Rule(
+            [
                 '/project/<pid>/ubiquitypress/widget/',
                 '/project/<pid>/node/<nid>/ubiquitypress/widget/',
             ],

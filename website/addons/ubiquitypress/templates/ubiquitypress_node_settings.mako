@@ -31,6 +31,7 @@
                 <span data-bind="html: journalDescription"></span>
             </div>
             <div class="row">
+                    <div class="col-md-12"><hr></div>
                     <div class="col-md-10 overflow">
                         <p data-bind="html: message, attr.class: messageClass"></p>
                     </div>
