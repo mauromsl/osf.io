@@ -1,21 +1,18 @@
 <%inherit file="project/addon/widget.mako"/>
 
-<div id="ubiquitypressScope" class="scripted">
+<div id="ubiquitypressScope">
 
-    <div id="forwardWidget" data-bind="visible: url() !== null">
+    <div id="ubiquitypressWidget">
 
-        hello!
-        
-		{{ test }}
+        <div>
+            When your project is ready to be published, go ahead and click the publish button
+        </div>
 
-		testing how this works
-
+        <div class="spaced-buttons m-t-sm">
+            <a class="btn btn-primary">Publish</a>
+        </div>
 
     </div>
-    sdofyusdliufghsdkfjhgsdkfhsgdfjh
-    ubiquitypress!!!!!!!!!!
 
 </div>
-asdusgf iuysfvgsjdkHGFbd
- ubiquitypress!!!!!!!!!!
 

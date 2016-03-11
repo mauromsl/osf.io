@@ -16,7 +16,7 @@ OWNERS = ['node']
 ADDED_DEFAULT = []
 ADDED_MANDATORY = []
 
-VIEWS = ['views']
+VIEWS = ['widget']
 CONFIGS = ['node']
 
 CATEGORIES = ['publish']

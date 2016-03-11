@@ -14,3 +14,10 @@ var ViewModel = function() {
     console.log('Ubiquity press addon loaded!! 2');
    }
 
+function UbiquitypressWidget(selector) {
+    var self = this;
+    self.viewModel = new ViewModel();
+    $osf.applyBindings(self.viewModel, selector);
+}
+
+module.exports = UbiquitypressWidget;

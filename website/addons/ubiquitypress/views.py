@@ -5,9 +5,10 @@ from website.project.decorators import (
     must_have_addon,
     must_have_permission)
 
-from website.addons.ubiquitypress.utils import serialize_settings
+from website.addons.ubiquitypress.utils import serialize_settings, settings_complete
 
 import requests
+from pprint import pprint
 
 
 
@@ -54,11 +55,12 @@ def ubiquitypress_settings_put(auth, node_addon, **kwargs):
 
 
 @must_have_addon('ubiquitypress', 'node')
-def ubiquitypress_widget(**kwargs):
+def ubiquitypress_widget(node_addon, **kwargs):
 
-    journals_api = requests.get('http://jura.ubiquity.press/api/public/journals/')
-    journals = journals_api.json()
-
-    return {'journals':journals}
+    out = serialize_settings(node_addon)
+    out['complete'] = settings_complete(node_addon)
+    out.update(node_addon.config.to_json())
+    print (dir(out))
+    return out
 
 

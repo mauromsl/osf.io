@@ -20,3 +20,8 @@ def serialize_settings(node_addon):
         'journal_code': node_addon.journal_code,
         'journals': get_journals(),
     }
+
+def settings_complete(node_addon):
+    return (
+        node_addon.journal_code is not None
+    )
