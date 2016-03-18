@@ -13,7 +13,8 @@
         "twofactor",
         "wiki",
         "googledrive",
-        "ubiquitypress"
+        "ubiquitypress",
+        "ojs"
     ],
     "addons_archivable": {
         "osfstorage": "full",
